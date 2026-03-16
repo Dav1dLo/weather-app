@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Current Weather</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      min-width: 320px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .card h1 { font-size: 1.4rem; margin-bottom: 8px; font-weight: 500; }
+    .location { font-size: 0.9rem; opacity: 0.8; margin-bottom: 24px; }
+    .weather-icon { font-size: 5rem; margin: 16px 0; }
+    .temp { font-size: 4rem; font-weight: 700; line-height: 1; }
+    .description { font-size: 1.1rem; margin: 8px 0 24px; opacity: 0.9; }
+
+    .details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .detail-item {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .detail-item .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 4px;
+    }
+
+    .detail-item .value { font-size: 1.1rem; font-weight: 600; }
+    .loading, .error { padding: 60px 40px; }
+    .error { color: #ffcccc; }
+
+    .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card" id="app">
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Getting your location...</p>
+    </div>
+  </div>
+
+  <script>
+    const WMO_CODES = {
+      0: { desc: "Clear sky", icon: "\u2600\uFE0F" },
+      1: { desc: "Mainly clear", icon: "\uD83C\uDF24\uFE0F" },
+      2: { desc: "Partly cloudy", icon: "\u26C5" },
+      3: { desc: "Overcast", icon: "\u2601\uFE0F" },
+      45: { desc: "Fog", icon: "\uD83C\uDF2B\uFE0F" },
+      48: { desc: "Rime fog", icon: "\uD83C\uDF2B\uFE0F" },
+      51: { desc: "Light drizzle", icon: "\uD83C\uDF26\uFE0F" },
+      53: { desc: "Moderate drizzle", icon: "\uD83C\uDF26\uFE0F" },
+      55: { desc: "Dense drizzle", icon: "\uD83C\uDF27\uFE0F" },
+      61: { desc: "Slight rain", icon: "\uD83C\uDF27\uFE0F" },
+      63: { desc: "Moderate rain", icon: "\uD83C\uDF27\uFE0F" },
+      65: { desc: "Heavy rain", icon: "\uD83C\uDF27\uFE0F" },
+      71: { desc: "Slight snow", icon: "\uD83C\uDF28\uFE0F" },
+      73: { desc: "Moderate snow", icon: "\uD83C\uDF28\uFE0F" },
+      75: { desc: "Heavy snow", icon: "\uD83C\uDF28\uFE0F" },
+      80: { desc: "Slight showers", icon: "\uD83C\uDF26\uFE0F" },
+      81: { desc: "Moderate showers", icon: "\uD83C\uDF27\uFE0F" },
+      82: { desc: "Violent showers", icon: "\u26C8\uFE0F" },
+      95: { desc: "Thunderstorm", icon: "\u26C8\uFE0F" },
+      96: { desc: "Thunderstorm w/ hail", icon: "\u26C8\uFE0F" },
+      99: { desc: "Thunderstorm w/ heavy hail", icon: "\u26C8\uFE0F" },
+    };
+
+    const app = document.getElementById("app");
+
+    function showError(msg) {
+      app.innerHTML = '<div class="error"><p>' + msg + '</p></div>';
+    }
+
+    async function getLocationName(lat, lon) {
+      try {
+        const res = await fetch(
+          "https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json"
+        );
+        const data = await res.json();
+        const a = data.address;
+        return a.city || a.town || a.village || a.county || "Unknown";
+      } catch {
+        return lat.toFixed(2) + ", " + lon.toFixed(2);
+      }
+    }
+
+    async function fetchWeather(lat, lon) {
+      const p = new URLSearchParams({
+        latitude: lat,
+        longitude: lon,
+        current: "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m",
+        wind_speed_unit: "ms",
+      });
+      const res = await fetch("https://api.open-meteo.com/v1/forecast?" + p);
+      if (!res.ok) throw new Error("Weather API error");
+      return res.json();
+    }
+
+    function render(weather, locationName) {
+      const c = weather.current;
+      const wmo = WMO_CODES[c.weather_code] || { desc: "Unknown", icon: "\uD83C\uDF0D" };
+
+      app.innerHTML =
+        '<h1>Current Weather</h1>' +
+        '<p class="location">' + locationName + '</p>' +
+        '<div class="weather-icon">' + wmo.icon + '</div>' +
+        '<div class="temp">' + Math.round(c.temperature_2m) + '\u00B0C</div>' +
+        '<p class="description">' + wmo.desc + '</p>' +
+        '<div class="details">' +
+          '<div class="detail-item"><div class="label">Feels like</div><div class="value">' + Math.round(c.apparent_temperature) + '\u00B0C</div></div>' +
+          '<div class="detail-item"><div class="label">Humidity</div><div class="value">' + c.relative_humidity_2m + '%</div></div>' +
+          '<div class="detail-item"><div class="label">Wind</div><div class="value">' + c.wind_speed_10m + ' m/s</div></div>' +
+          '<div class="detail-item"><div class="label">Code</div><div class="value">' + c.weather_code + '</div></div>' +
+        '</div>';
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async function(pos) {
+        try {
+          app.querySelector("p").textContent = "Fetching weather...";
+          var lat = pos.coords.latitude;
+          var lon = pos.coords.longitude;
+          var results = await Promise.all([
+            fetchWeather(lat, lon),
+            getLocationName(lat, lon),
+          ]);
+          render(results[0], results[1]);
+        } catch (e) {
+          showError("Could not fetch weather data. Please try again.");
+        }
+      },
+      function() {
+        showError("Location access denied. Please allow location access and reload.");
+      },
+      { timeout: 10000 }
+    );
+  </script>
+</body>
+</html>
